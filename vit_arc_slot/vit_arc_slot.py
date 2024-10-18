@@ -54,19 +54,33 @@ class SlotViTArc(Module):
         self.input_shape = (channels, image_size, image_size)
         assert divisible_by(image_size, patch_size)
 
+        # slot attention
+
         self.slot_attn = SlotAttention(
             num_slots = num_slots,
             dim = dim,
             iters = slot_attn_iterations
         )
 
-        num_patches = (image_size // patch_size) ** 2
+        # some math
+
+        patched_dim = image_size // patch_size
+        num_patches = patched_dim ** 2
         patch_dim = channels * patch_size ** 2
+
+        # project patches to tokens
 
         self.to_tokens = nn.Sequential(
             Rearrange('b c (h p1) (w p2) -> b h w (p1 p2 c)', p1 = patch_size, p2 = patch_size),
             nn.Linear(patch_dim, dim)
         )
+
+        # absolute axial positions
+
+        self.width_pos_emb = nn.Embedding(patched_dim, dim)
+        self.height_pos_emb = nn.Embedding(patched_dim, dim)
+
+        # layers
 
         layers = ModuleList([])
 
@@ -87,9 +101,18 @@ class SlotViTArc(Module):
         self,
         images
     ):
+        device = images.device
         assert images.shape[-3:] == self.input_shape
 
         tokens = self.to_tokens(images)
+
+        height_seq = torch.arange(tokens.shape[1], device = device)
+        width_seq = torch.arange(tokens.shape[2], device = device)
+
+        height_pos_emb = self.height_pos_emb(height_seq)
+        width_pos_emb = self.width_pos_emb(width_seq)
+
+        tokens = tokens + rearrange(height_pos_emb, 'h d -> h 1 d') + rearrange(width_pos_emb, 'w d -> 1 w d')
 
         tokens = rearrange(tokens, 'b h w d -> b (h w) d')
 
