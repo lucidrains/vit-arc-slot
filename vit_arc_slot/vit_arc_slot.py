@@ -21,6 +21,15 @@ def default(v, d):
 def divisible_by(num, den):
     return (num % den) == 0
 
+def softclamp(t, value):
+    # clamp from 0. to value
+    half_value = value / 2
+    t = t - half_value
+    t = t / half_value
+    t = t.tanh()
+    t = t * half_value
+    return t + half_value
+
 def pack_with_inverse(t, pattern):
     t, packed_shape = pack(t, pattern)
 
@@ -182,8 +191,10 @@ class SlotViTArc(Module):
 
         tokens = self.to_tokens(images)
 
-        height_seq = torch.arange(tokens.shape[1], device = device)
-        width_seq = torch.arange(tokens.shape[2], device = device)
+        height_patches, width_patches = tokens.shape[1:3]
+
+        height_seq = torch.arange(height_patches, device = device)
+        width_seq = torch.arange(width_patches, device = device)
 
         height_pos_emb = self.height_pos_emb(height_seq)
         width_pos_emb = self.width_pos_emb(width_seq)
@@ -201,6 +212,12 @@ class SlotViTArc(Module):
         # eventually, will have to figure out how to determine each slot's coordinates, and also feed that into the mlp
 
         slot_coords = self.slot_to_coords(objects)
+
+        # soft clamp to make sure predicted coordinates are not out of bounds
+
+        slot_coords_height, slot_coords_width = slot_coords.unbind(dim = -1)
+        slot_coords_height = softclamp(slot_coords_height, height_patches)
+        slot_coords_width = softclamp(slot_coords_width, width_patches)
 
         attn_bias = self.rel_pos_mlp(patches_dims, learned_coords = slot_coords)
 
