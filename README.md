@@ -1,6 +1,6 @@
 ## ViT Arc w/ Slot Attention
 
-Explorations into improving <a href="https://arxiv.org/abs/2410.06405">ViTArc</a> with <a href="https://github.com/lucidrains/slot-attention">Slot Attention</a>
+Explorations into improving <a href="https://arxiv.org/abs/2410.06405">ViTArc</a> (Li et al) with <a href="https://github.com/lucidrains/slot-attention">Slot Attention</a>
 
 ## Citations
 
