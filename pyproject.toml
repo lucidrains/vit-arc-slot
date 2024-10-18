@@ -26,7 +26,7 @@ classifiers = [
 dependencies = [
     "einops>=0.8.0",
     "slot-attention",
-    "x-transformers>=1.40.0",
+    "x-transformers>=1.40.2",
     "torch>=2.5",
 ]
 
