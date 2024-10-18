@@ -15,7 +15,7 @@ keywords = [
     'abstract visual "reasoning"'
 ]
 
-classifiers=[
+classifiers = [
     'Development Status :: 4 - Beta',
     'Intended Audience :: Developers',
     'Topic :: Scientific/Engineering :: Artificial Intelligence',
@@ -24,9 +24,10 @@ classifiers=[
 ]
 
 dependencies = [
+    "einops>=0.8.0",
     "slot-attention",
+    "x-transformers>=1.40.0",
     "torch>=2.5",
-    "einops>=0.8.0"
 ]
 
 [project.urls]
