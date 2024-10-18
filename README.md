@@ -23,3 +23,14 @@ Explorations into improving <a href="https://arxiv.org/abs/2410.06405">ViTArc</a
     primaryClass = {cs.LG}
 }
 ```
+
+```bibtex
+@article{Liu2018AnIF,
+    title   = {An Intriguing Failing of Convolutional Neural Networks and the CoordConv Solution},
+    author  = {Rosanne Liu and Joel Lehman and Piero Molino and Felipe Petroski Such and Eric Frank and Alexander Sergeev and Jason Yosinski},
+    journal = {ArXiv},
+    year    = {2018},
+    volume  = {abs/1807.03247},
+    url     = {https://api.semanticscholar.org/CorpusID:49653092}
+}
+```

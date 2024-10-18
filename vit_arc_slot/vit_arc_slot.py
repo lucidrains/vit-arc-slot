@@ -7,7 +7,7 @@ from slot_attention import SlotAttention
 
 from x_transformers import Attention, FeedForward, RMSNorm
 
-from einops import rearrange, pack, unpack
+from einops import rearrange, pack, unpack, repeat
 from einops.layers.torch import Rearrange
 
 # helper functions
@@ -48,11 +48,20 @@ class SlotViTArc(Module):
         num_slots = 50,
         slot_attn_iterations = 3,
         dropout = 0.,
-        dim_output = None
+        dim_output = None,
+        images_add_coords = False
     ):
         super().__init__()
         self.input_shape = (channels, image_size, image_size)
         assert divisible_by(image_size, patch_size)
+
+        # maybe coord conv
+
+        self.image_size = image_size
+        self.images_add_coords = images_add_coords
+
+        if images_add_coords:
+            channels += 2
 
         # slot attention
 
@@ -101,8 +110,18 @@ class SlotViTArc(Module):
         self,
         images
     ):
-        device = images.device
+        batch, device = images.shape[0], images.device
         assert images.shape[-3:] == self.input_shape
+
+        # maybe add coords
+
+        if self.images_add_coords:
+            image_size_seq = torch.arange(self.image_size, device = device)
+            coords = torch.stack(torch.meshgrid((image_size_seq, image_size_seq), indexing = 'ij'))
+            coords = repeat(coords, '... -> b ...', b = batch)
+            images = torch.cat((images, coords), dim = 1)
+
+        # patches to tokens
 
         tokens = self.to_tokens(images)
 
