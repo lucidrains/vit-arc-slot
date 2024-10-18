@@ -106,6 +106,7 @@ class SlotViTArc(Module):
         num_slots = 50,
         slot_attn_iterations = 3,
         slot_attn_heads = 4,
+        softclamp_slot_pred_coords = True,
         dropout = 0.,
         dim_output = None,
         images_add_coords = False
@@ -132,6 +133,8 @@ class SlotViTArc(Module):
         )
 
         self.slot_to_coords = nn.Linear(dim, 2)
+
+        self.softclamp_slot_pred_coords = softclamp_slot_pred_coords
 
         # some math
 
@@ -213,11 +216,13 @@ class SlotViTArc(Module):
 
         slot_coords = self.slot_to_coords(objects)
 
-        # soft clamp to make sure predicted coordinates are not out of bounds
+        if self.softclamp_slot_pred_coords:
+            # soft clamp to make sure predicted coordinates are not out of bounds
 
-        slot_coords_height, slot_coords_width = slot_coords.unbind(dim = -1)
-        slot_coords_height = softclamp(slot_coords_height, height_patches)
-        slot_coords_width = softclamp(slot_coords_width, width_patches)
+            slot_coords_height, slot_coords_width = slot_coords.unbind(dim = -1)
+            slot_coords_height = softclamp(slot_coords_height, height_patches)
+            slot_coords_width = softclamp(slot_coords_width, width_patches)
+            learned_coords = torch.stack((slot_coords_height, slot_coords_width), dim = -1)
 
         attn_bias = self.rel_pos_mlp(patches_dims, learned_coords = slot_coords)
 
