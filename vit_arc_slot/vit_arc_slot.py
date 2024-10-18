@@ -30,6 +30,50 @@ def pack_with_inverse(t, pattern):
 
     return t, inverse
 
+# relative positions to attention bias mlp
+# will use this in place of their 2d alibi position with symmetry breaking by using left and right slope
+
+class RelativePositionMLP(Module):
+    def __init__(
+        self,
+        *,
+        dim,
+        heads
+    ):
+        super().__init__()
+
+        self.mlp = nn.Sequential(
+            nn.Linear(2, dim),
+            nn.SiLU(),
+            nn.Linear(dim, dim),
+            nn.SiLU(),
+            nn.Linear(dim, heads),
+            Rearrange('... h -> h ...')
+        )
+
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
+    def forward(
+        self,
+        shape: tuple[int, int]
+    ):
+        h, w, device = *shape, self.device
+
+        h_seq = torch.arange(h, device = device)
+        w_seq = torch.arange(w, device = device)
+
+        coords = torch.stack(torch.meshgrid((h_seq, w_seq), indexing = 'ij'), dim = -1)
+
+        coords = rearrange(coords, 'i j c -> (i j) c')
+
+        rel_coords = rearrange(coords, 'i c -> i 1 c') - rearrange(coords, 'j c -> 1 j c')
+
+        attn_bias = self.mlp(rel_coords.float())
+
+        return attn_bias
+
 # main class
 
 class SlotViTArc(Module):
@@ -91,6 +135,10 @@ class SlotViTArc(Module):
         self.width_pos_emb = nn.Embedding(patched_dim, dim)
         self.height_pos_emb = nn.Embedding(patched_dim, dim)
 
+        # relative positions
+
+        self.rel_pos_mlp = RelativePositionMLP(dim = dim // 4, heads = heads)
+
         # layers
 
         layers = ModuleList([])
@@ -135,14 +183,24 @@ class SlotViTArc(Module):
 
         tokens = tokens + rearrange(height_pos_emb, 'h d -> h 1 d') + rearrange(width_pos_emb, 'w d -> 1 w d')
 
+        patches_dims = tuple(tokens.shape[1:3])
+
         tokens = rearrange(tokens, 'b h w d -> b (h w) d')
 
         objects = self.slot_attn(tokens)
 
+        num_objects = objects.shape[-2]
+
+        # eventually, will have to figure out how to determine each slot's coordinates, and also feed that into the mlp
+
+        attn_bias = self.rel_pos_mlp(patches_dims)
+
+        attn_bias = F.pad(attn_bias, (num_objects, 0, num_objects, 0), value = 0.)
+
         tokens, unpack_fn = pack_with_inverse([objects, tokens], 'b * d')
 
         for attn_norm, attn, ff_norm, ff in self.layers:
-            tokens = attn(attn_norm(tokens)) + tokens
+            tokens = attn(attn_norm(tokens), attn_bias = attn_bias) + tokens
             tokens = ff(ff_norm(tokens)) + tokens
 
         tokens = self.final_norm(tokens)
