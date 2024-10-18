@@ -3,7 +3,7 @@ from torch import nn, tensor
 import torch.nn.functional as F
 from torch.nn import Module, ModuleList
 
-from slot_attention import SlotAttention
+from slot_attention import MultiHeadSlotAttention
 
 from x_transformers import Attention, FeedForward, RMSNorm
 
@@ -47,6 +47,7 @@ class SlotViTArc(Module):
         ff_kwargs: dict = dict(),
         num_slots = 50,
         slot_attn_iterations = 3,
+        slot_attn_heads = 4,
         dropout = 0.,
         dim_output = None,
         images_add_coords = False
@@ -65,9 +66,10 @@ class SlotViTArc(Module):
 
         # slot attention
 
-        self.slot_attn = SlotAttention(
+        self.slot_attn = MultiHeadSlotAttention(
             num_slots = num_slots,
             dim = dim,
+            heads = slot_attn_heads,
             iters = slot_attn_iterations
         )
 
