@@ -48,7 +48,7 @@ class RelativePositionMLP(Module):
             nn.Linear(dim, dim),
             nn.SiLU(),
             nn.Linear(dim, heads),
-            Rearrange('... h -> h ...')
+            Rearrange('... i j h -> ... h i j')
         )
 
     @property
@@ -57,7 +57,8 @@ class RelativePositionMLP(Module):
 
     def forward(
         self,
-        shape: tuple[int, int]
+        shape: tuple[int, int],
+        learned_coords = None
     ):
         h, w, device = *shape, self.device
 
@@ -68,7 +69,11 @@ class RelativePositionMLP(Module):
 
         coords = rearrange(coords, 'i j c -> (i j) c')
 
-        rel_coords = rearrange(coords, 'i c -> i 1 c') - rearrange(coords, 'j c -> 1 j c')
+        if exists(learned_coords):
+            coords = repeat(coords, '... -> b ...', b = learned_coords.shape[0])
+            coords = torch.cat((learned_coords, coords), dim = -2)
+
+        rel_coords = rearrange(coords, '... i c -> ... i 1 c') - rearrange(coords, '... j c -> ... 1 j c')
 
         attn_bias = self.mlp(rel_coords.float())
 
@@ -116,6 +121,8 @@ class SlotViTArc(Module):
             heads = slot_attn_heads,
             iters = slot_attn_iterations
         )
+
+        self.slot_to_coords = nn.Linear(dim, 2)
 
         # some math
 
@@ -193,9 +200,9 @@ class SlotViTArc(Module):
 
         # eventually, will have to figure out how to determine each slot's coordinates, and also feed that into the mlp
 
-        attn_bias = self.rel_pos_mlp(patches_dims)
+        slot_coords = self.slot_to_coords(objects)
 
-        attn_bias = F.pad(attn_bias, (num_objects, 0, num_objects, 0), value = 0.)
+        attn_bias = self.rel_pos_mlp(patches_dims, learned_coords = slot_coords)
 
         tokens, unpack_fn = pack_with_inverse([objects, tokens], 'b * d')
 
