@@ -158,20 +158,41 @@ class SlotViTArc(Module):
 
         self.rel_pos_mlp = RelativePositionMLP(dim = dim // 4, heads = heads)
 
-        # layers
+        # encoder layers
 
-        layers = ModuleList([])
+        encoder_layers = ModuleList([])
 
         for _ in range(depth):
-            layers.append(ModuleList([
+            encoder_layers.append(ModuleList([
                 RMSNorm(dim),
                 Attention(dim = dim, dim_head = dim_head, heads = heads, dropout = dropout, **attn_kwargs),
                 RMSNorm(dim),
                 FeedForward(dim = dim, mult = ff_mult, dropout = dropout, **ff_kwargs),
             ]))
 
-        self.layers = layers
-        self.final_norm = RMSNorm(dim)
+        self.encoder_layers = encoder_layers
+
+        self.final_encoder_norm = RMSNorm(dim)
+
+        # decoder layers
+
+        decoder_layers = ModuleList([])
+
+        for _ in range(depth):
+            decoder_layers.append(ModuleList([
+                RMSNorm(dim),
+                Attention(dim = dim, dim_head = dim_head, heads = heads, dropout = dropout, **attn_kwargs),
+                RMSNorm(dim),
+                Attention(dim = dim, dim_head = dim_head, heads = heads, dropout = dropout, **attn_kwargs),
+                RMSNorm(dim),
+                FeedForward(dim = dim, mult = ff_mult, dropout = dropout, **ff_kwargs),
+            ]))
+
+        self.decoder_layers = decoder_layers
+
+        self.final_decoder_norm = RMSNorm(dim)
+
+        # prediction head
 
         self.to_pred = nn.Linear(dim, default(dim_output, dim))
 
@@ -212,8 +233,6 @@ class SlotViTArc(Module):
 
         num_objects = objects.shape[-2]
 
-        # eventually, will have to figure out how to determine each slot's coordinates, and also feed that into the mlp
-
         slot_coords = self.slot_to_coords(objects)
 
         if self.softclamp_slot_pred_coords:
@@ -228,12 +247,38 @@ class SlotViTArc(Module):
 
         tokens, unpack_fn = pack_with_inverse([objects, tokens], 'b * d')
 
-        for attn_norm, attn, ff_norm, ff in self.layers:
+        # save the original tokens for decoder
+
+        orig_tokens = tokens
+
+        # encoder
+
+        for attn_norm, attn, ff_norm, ff in self.encoder_layers:
             tokens = attn(attn_norm(tokens), attn_bias = attn_bias) + tokens
             tokens = ff(ff_norm(tokens)) + tokens
 
-        tokens = self.final_norm(tokens)
+        encoded_tokens = self.final_encoder_norm(tokens)
 
-        object_tokens, tokens = unpack_fn(tokens)
+        # decoder
 
-        return self.to_pred(tokens)
+        tokens = orig_tokens
+
+        for (
+            attn_norm,
+            attn,
+            cross_attn_norm,
+            cross_attn,
+            ff_norm,
+            ff
+        ) in self.decoder_layers:
+            tokens = cross_attn(cross_attn_norm(tokens), attn_bias = attn_bias, context = encoded_tokens) + tokens
+            tokens = attn(attn_norm(tokens), attn_bias = attn_bias) + tokens
+            tokens = ff(ff_norm(tokens)) + tokens
+
+        decoded_tokens = self.final_decoder_norm(tokens)
+
+        # splice out object tokens
+
+        object_tokens, decoded_tokens = unpack_fn(decoded_tokens)
+
+        return self.to_pred(decoded_tokens)
